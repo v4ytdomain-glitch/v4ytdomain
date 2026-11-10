@@ -3,21 +3,18 @@ import { Link } from "react-router";
 import { api } from "../lib/api";
 import ParticleField from "../components/ParticleField";
 
-function useCountdown(d: number, h: number, m: number) {
-  const [time, setTime] = useState({ d, h, m, s: 0 });
+function useCountdown(target: string | undefined) {
+  const [time, setTime] = useState({ d: 0, h: 0, m: 0, s: 0 });
   useEffect(() => {
-    const interval = setInterval(() => {
-      setTime(prev => {
-        let { d, h, m, s } = prev;
-        if (s > 0) return { d, h, m, s: s - 1 };
-        if (m > 0) return { d, h, m: m - 1, s: 59 };
-        if (h > 0) return { d, h: h - 1, m: 59, s: 59 };
-        if (d > 0) return { d: d - 1, h: 23, m: 59, s: 59 };
-        return prev;
-      });
-    }, 1000);
+    const update = () => {
+      const remaining = Math.max(0, (target ? new Date(target).getTime() : Date.now()) - Date.now());
+      const seconds = Math.floor(remaining / 1000);
+      setTime({ d: Math.floor(seconds / 86400), h: Math.floor((seconds % 86400) / 3600), m: Math.floor((seconds % 3600) / 60), s: seconds % 60 });
+    };
+    update();
+    const interval = setInterval(update, 1000);
     return () => clearInterval(interval);
-  }, []);
+  }, [target]);
   return time;
 }
 
@@ -66,13 +63,14 @@ const tierColors: Record<string, string> = {
 };
 
 export default function Home() {
-  const countdown = useCountdown(2, 14, 38);
-  
   const [tournamentsData, setTournamentsData] = useState<any[]>([]);
   const [playersData, setPlayersData] = useState<any[]>([]);
   
   // Track the logged-in user to dynamically update the CTA buttons
   const [me, setMe] = useState<any>(null); 
+  const [authResolved, setAuthResolved] = useState(false);
+  const [myRegistration, setMyRegistration] = useState<string | null>(null);
+  const [checkingRegistration, setCheckingRegistration] = useState(false);
   
   const [loading, setLoading] = useState(true);
 
@@ -80,11 +78,12 @@ export default function Home() {
     // 1. Fetch User independently (fails safely to null if logged out)
     api.get("/auth/me")
       .then(userData => setMe(userData))
-      .catch(() => setMe(null));
+      .catch(() => setMe(null))
+      .finally(() => setAuthResolved(true));
 
     // 2. Fetch platform data
     Promise.all([
-      api.get("/tournaments/"),
+      api.get("/tournaments/?limit=100"),
       api.get("/players/")
     ])
       .then(([tData, pData]) => {
@@ -98,6 +97,22 @@ export default function Home() {
       });
   }, []);
 
+  const next = tournamentsData
+    .filter(t => t.status !== "completed" && t.status !== "cancelled" && t.status !== "live" && new Date(t.starts_at).getTime() > Date.now())
+    .sort((a, b) => new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime())[0];
+  const countdown = useCountdown(next?.starts_at);
+
+  useEffect(() => {
+    let live = true;
+    setMyRegistration(null);
+    if (!me || !next) { setCheckingRegistration(false); return () => { live = false; }; }
+    setCheckingRegistration(true);
+    api.get<any>(`/tournaments/${next.id}/my-registration`).then(result => {
+      if (live) setMyRegistration(result?.status || null);
+    }).catch(() => { if (live) setMyRegistration(null); }).finally(() => { if (live) setCheckingRegistration(false); });
+    return () => { live = false; };
+  }, [me, next?.id]);
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
@@ -108,9 +123,6 @@ export default function Home() {
     );
   }
 
-  // Strictly find the next active tournament. If none exist, it will be undefined.
-  const next = tournamentsData.find(t => t.status !== "completed");
-  
   // Get top 5 players for the leaderboard preview
   const topPlayers = playersData.slice(0, 5);
   
@@ -175,7 +187,7 @@ export default function Home() {
 
             <div className="flex flex-wrap gap-3 fade-up delay-400">
               <Link to="/tournaments" className="btn-primary pulse-glow">JOIN NEXT TOURNAMENT</Link>
-              <a href="https://youtube.com" target="_blank" rel="noopener noreferrer" className="btn-secondary flex items-center gap-2">
+              <a href="https://www.youtube.com/@V4YT_Official" target="_blank" rel="noopener noreferrer" className="btn-secondary flex items-center gap-2">
                 <svg className="w-4 h-4 text-red-400" viewBox="0 0 24 24" fill="currentColor">
                   <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
                 </svg>
@@ -225,10 +237,10 @@ export default function Home() {
                 <div className="mb-5">
                   <div className="flex justify-between text-xs mb-2">
                     <span className="text-muted-foreground">Spots filled</span>
-                    <span className="font-bold font-mono-data text-foreground">{next.players_registered} / {next.max_players}</span>
+                  <span className="font-bold font-mono-data text-foreground">{next.players} / {next.maxPlayers}</span>
                   </div>
                   <div className="h-2 bg-background/80 rounded-full overflow-hidden xp-bar">
-                    <div className="h-full bg-gradient-to-r from-violet-600 via-violet-400 to-cyan-500 rounded-full" style={{ width: `${(next.players_registered / next.max_players) * 100}%`, animation: "fill-bar 1.5s ease-out 0.5s both" }}></div>
+                    <div className="h-full bg-gradient-to-r from-violet-600 via-violet-400 to-cyan-500 rounded-full" style={{ width: `${Math.min(100, (next.players / next.maxPlayers) * 100)}%`, animation: "fill-bar 1.5s ease-out 0.5s both" }}></div>
                   </div>
                 </div>
 
@@ -237,7 +249,7 @@ export default function Home() {
                     <p className="text-xs text-muted-foreground">Prize Pool</p>
                     <p className="text-xl font-black gradient-text-gold text-glow-gold" style={{ fontFamily: "'Rajdhani', sans-serif" }}>{next.prize}</p>
                   </div>
-                  <Link to={`/tournaments/${next.id}/register`} className="btn-primary">REGISTER NOW</Link>
+                  {myRegistration === "registered" ? <button type="button" disabled className="btn-primary cursor-default opacity-75">REGISTERED</button> : me && checkingRegistration || !authResolved ? <button type="button" disabled className="btn-primary cursor-wait opacity-60">CHECKING…</button> : <Link to={`/tournaments/${next.id}/register`} className="btn-primary">REGISTER NOW</Link>}
                 </div>
               </div>
             ) : (

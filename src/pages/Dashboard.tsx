@@ -1,19 +1,20 @@
 import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router";
 import { api } from "../lib/api";
-import { tournaments, achievements, pointHistory } from "../data/mock"; // We will keep secondary data mocked for now
 import ParticleField from "../components/ParticleField";
 
 export default function Dashboard() {
   const [me, setMe] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [tournaments, setTournaments] = useState<any[]>([]);
+  const [achievements, setAchievements] = useState<any[]>([]);
   const navigate = useNavigate();
 
   useEffect(() => {
     // Fetch the logged-in user's profile
-    api.get("/auth/me")
-      .then(data => {
-        setMe(data);
+    Promise.all([api.get("/auth/me"), api.get("/tournaments/"), api.get("/achievements/")])
+      .then(([data, tournamentData, achievementData]) => {
+        setMe(data); setTournaments(tournamentData); setAchievements(achievementData);
         setLoading(false);
       })
       .catch(err => {
@@ -119,8 +120,8 @@ export default function Dashboard() {
                 <h3 className="text-lg font-black text-white" style={{ fontFamily: "'Rajdhani', sans-serif" }}>UPCOMING TOURNAMENT</h3>
                 <span className="text-xs px-2.5 py-1 rounded-full badge-open font-bold flicker" style={{ fontFamily: "'Rajdhani', sans-serif" }}>REGISTERED ✓</span>
               </div>
-              <h4 className="text-xl font-black text-white mb-1 text-glow-white" style={{ fontFamily: "'Rajdhani', sans-serif" }}>{tournaments[0].name}</h4>
-              <p className="text-sm text-muted-foreground mb-4">{tournaments[0].game} · {tournaments[0].date}</p>
+              <h4 className="text-xl font-black text-white mb-1 text-glow-white" style={{ fontFamily: "'Rajdhani', sans-serif" }}>{tournaments[0]?.name || "No upcoming tournaments"}</h4>
+              <p className="text-sm text-muted-foreground mb-4">{tournaments[0] ? `${tournaments[0].game} · ${tournaments[0].date}` : "Check back soon for events."}</p>
               <p className="text-xs text-muted-foreground mb-2 tracking-widest" style={{ fontFamily: "'Rajdhani', sans-serif" }}>MATCH STARTS IN:</p>
               <div className="grid grid-cols-4 gap-2 mb-4">
                 {[{ v: "01", l: "DAYS" }, { v: "04", l: "HRS" }, { v: "32", l: "MIN" }, { v: "18", l: "SEC" }].map(item => (
@@ -131,7 +132,7 @@ export default function Dashboard() {
                   </div>
                 ))}
               </div>
-              <Link to="/tournaments/1" className="btn-primary w-full text-center block text-xs">VIEW TOURNAMENT</Link>
+              {tournaments[0] && <Link to={`/tournaments/${tournaments[0].id}`} className="btn-primary w-full text-center block text-xs">VIEW TOURNAMENT</Link>}
             </div>
           </div>
 

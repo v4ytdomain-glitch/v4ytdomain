@@ -3,7 +3,7 @@ import { Link } from "react-router";
 import { api } from "../lib/api";
 import ParticleField from "../components/ParticleField";
 
-const tabs = ["GLOBAL", "WEEKLY", "MONTHLY", "SEASON", "GAME"];
+const tabs = ["GLOBAL", "WEEKLY", "MONTHLY", "SEASON", "GAME", "TEAM"];
 const tierColors: Record<string, string> = { legend: "#f59e0b", master: "#c084fc", diamond: "#b9f2ff", platinum: "#00b4d8", gold: "#ffd700", silver: "#c0c0c0", bronze: "#cd7f32" };
 const tierIcons: Record<string, string> = { legend: "👑", master: "🔮", diamond: "💎", platinum: "💠", gold: "🥇", silver: "🥈", bronze: "🥉" };
 const tierGlow: Record<string, string> = { legend: "0 0 20px rgba(245,158,11,0.4)", master: "0 0 20px rgba(192,132,252,0.4)", diamond: "0 0 20px rgba(185,242,255,0.3)", platinum: "0 0 20px rgba(0,180,216,0.35)", gold: "0 0 20px rgba(255,215,0,0.4)" };
@@ -16,19 +16,23 @@ export default function Leaderboard() {
   // New state variables for API data
   const [players, setPlayers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
 
   useEffect(() => {
-    // Fetch sorted players from the backend
-    api.get("/players/")
+    const period = activeTab === "MONTHLY" || activeTab === "WEEKLY" ? "monthly" : activeTab === "GAME" ? "game" : activeTab === "TEAM" ? "team" : "all-time";
+    setLoading(true);
+    api.get(`/leaderboard/${period}`)
       .then(data => {
-        setPlayers(data);
+        setPlayers(activeTab === "TEAM" ? data.map((team: any) => ({ ...team, username: team.name, avatar: team.name.slice(0, 2), tier: "team" })) : data);
+        setLoadError("");
         setLoading(false);
       })
       .catch(err => {
         console.error("Failed to load leaderboard", err);
+        setLoadError(err.message || "Unable to load leaderboard.");
         setLoading(false);
       });
-  }, []);
+  }, [activeTab]);
 
   const filtered = players.filter(p => p.username.toLowerCase().includes(search.toLowerCase()));
   const top3 = filtered.slice(0, 3);
@@ -60,6 +64,7 @@ export default function Leaderboard() {
       </div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-10">
+        {loadError && <p role="alert" className="text-red-400 mb-4">{loadError}</p>}
         {/* Tabs */}
         <div className="flex gap-0 border-b border-border mb-10 overflow-x-auto">
           {tabs.map(tab => (
@@ -100,7 +105,7 @@ export default function Leaderboard() {
                   const labelColors = ["text-slate-300", "text-yellow-400", "text-orange-400"];
 
                   return (
-                    <Link key={p.id} to={`/players/${p.id}`}
+                    <Link key={p.id} to={activeTab === "TEAM" ? "/teams" : `/players/${p.id}`}
                       className={`flex flex-col items-center group ${isFirst ? "z-10" : ""}`}>
                       {/* Avatar */}
                       <div className={`relative mb-2 ${isFirst ? "scale-in" : "fade-up"}`} style={{ animationDelay: isFirst ? "0.1s" : "0.2s" }}>
@@ -156,7 +161,7 @@ export default function Leaderboard() {
                 const isHovered = hovered === p.id;
                 
                 return (
-                  <Link key={p.id} to={`/players/${p.id}`}
+                  <Link key={p.id} to={activeTab === "TEAM" ? "/teams" : `/players/${p.id}`}
                     onMouseEnter={() => setHovered(p.id)}
                     onMouseLeave={() => setHovered(null)}
                     className="grid grid-cols-12 gap-2 px-5 py-4 border-b border-border/40 last:border-0 items-center transition-all"

@@ -1,174 +1,86 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router";
-import { tournaments, players } from "../data/mock";
+import { api } from "../lib/api";
 
-const tabs = ["Overview", "Rules", "Schedule", "Participants", "Results"];
+type TeamRow = { id: string; team_name: string; status: string; points: number; rank: number };
+type BracketMatch = { id: string; match_number: number; team1_id: string | null; team1_name: string | null; team2_id: string | null; team2_name: string | null; winner_team_id: string | null; winner_name: string | null; score1: number; score2: number; status: string; is_bye: boolean };
+type BracketRound = { id: string; name: string; round: number; matches: BracketMatch[] };
 
 export default function TournamentDetail() {
   const { id } = useParams();
-  const t = tournaments.find(x => x.id === Number(id)) || tournaments[0];
-  const [activeTab, setActiveTab] = useState("Overview");
+  const [t, setTournament] = useState<any>(null);
+  const [results, setResults] = useState<any[]>([]);
+  const [teamRows, setTeamRows] = useState<TeamRow[]>([]);
+  const [teamPage, setTeamPage] = useState(0);
+  const [teamTotal, setTeamTotal] = useState(0);
+  const [bracket, setBracket] = useState<BracketRound[]>([]);
+  const [tab, setTab] = useState("Overview");
+  const [loading, setLoading] = useState(true);
+  const [teamLoading, setTeamLoading] = useState(false);
+  const [error, setError] = useState("");
 
-  return (
-    <div>
-      {/* Banner */}
-      <div className="relative h-64 md:h-80 overflow-hidden">
-        <img src={t.image} alt={t.name} className="w-full h-full object-cover opacity-50" />
-        <div className="absolute inset-0 bg-gradient-to-t from-background via-background/60 to-transparent"></div>
-        <div className="absolute bottom-0 left-0 right-0 max-w-7xl mx-auto px-4 sm:px-6 pb-8">
-          <span className={`inline-block text-xs px-3 py-1 rounded-full font-bold tracking-wide mb-3 ${t.status === "live" ? "badge-live" : t.status === "open" ? "badge-open" : t.status === "soon" ? "badge-soon" : "badge-done"}`} style={{ fontFamily: "'Rajdhani', sans-serif" }}>
-            {t.status === "live" ? "🔴 LIVE NOW" : t.status === "open" ? "REGISTRATION OPEN" : t.status === "soon" ? "COMING SOON" : "COMPLETED"}
-          </span>
-          <h1 className="text-4xl md:text-5xl font-black text-white" style={{ fontFamily: "'Rajdhani', sans-serif" }}>{t.name}</h1>
-          <p className="text-muted-foreground">{t.game} · {t.date} · {t.time}</p>
-        </div>
+  useEffect(() => {
+    let live = true;
+    setLoading(true);
+    Promise.all([api.get<any>(`/tournaments/${id}`), api.get<any>(`/tournaments/${id}/results`), api.get<any>(`/tournaments/${id}/bracket`)]).then(([tournament, scores, bracketData]) => {
+      if (!live) return;
+      setTournament(tournament);
+      setResults(scores.items || scores);
+      setBracket(bracketData.rounds || []);
+    }).catch(e => { if (live) setError(e.message); }).finally(() => { if (live) setLoading(false); });
+    return () => { live = false; };
+  }, [id]);
+
+  useEffect(() => {
+    if (!t?.team_mode) return;
+    let live = true;
+    setTeamLoading(true);
+    api.getPage<any>(`/tournaments/${id}/teams/leaderboard?limit=10&offset=${teamPage * 10}`).then(page => {
+      if (!live) return;
+      setTeamRows(page.items || []);
+      setTeamTotal(page.total || 0);
+    }).catch(e => { if (live) setError(e.message); }).finally(() => { if (live) setTeamLoading(false); });
+    return () => { live = false; };
+  }, [id, t?.team_mode, teamPage]);
+
+  if (loading) return <div className="max-w-5xl mx-auto p-10 text-cyan-400">Loading tournament…</div>;
+  if (error) return <div className="max-w-5xl mx-auto p-10 text-red-400">{error}</div>;
+  if (!t) return null;
+  const tabs = ["Overview", "Rules", "Team Leaderboard", "Results"];
+  const maxTeamPage = Math.max(0, Math.ceil(teamTotal / 10) - 1);
+
+  return <div className="max-w-7xl mx-auto px-4 sm:px-6 py-12">
+    <div className="glass neon-border rounded-2xl p-8 mb-8"><span className="text-xs text-violet-400">{t.status.toUpperCase()}</span><h1 className="text-4xl font-black text-white mt-2">{t.name}</h1><p className="text-muted-foreground">{t.game} · {t.date} · {t.time}</p><p className="mt-4 text-muted-foreground">{t.description}</p></div>
+    <div className="flex flex-wrap gap-3 mb-6">{tabs.map(x => <button key={x} onClick={() => setTab(x)} className={`px-4 py-2 rounded ${tab === x ? "bg-violet-600 text-white" : "bg-secondary text-muted-foreground"}`}>{x}</button>)}</div>
+    {tab === "Overview" && <div className="glass border border-border rounded-xl p-5"><p>Prize pool: {t.prize}</p><p>Teams: {t.players}/{t.maxPlayers}</p><p>Registration deadline: {t.registration_closes_at || t.date}</p></div>}
+    {tab === "Rules" && <ul className="space-y-2">{(t.rules || []).map((rule: string, i: number) => <li key={i} className="glass border border-border rounded p-3">{rule}</li>)}</ul>}
+    {tab === "Team Leaderboard" && <section className="glass border border-border rounded-xl p-5">
+      <p className="text-sm text-muted-foreground mb-4">Team points are the sum of the current points held by active registered members.</p>
+      <div className="overflow-x-auto"><table className="w-full text-left"><thead><tr className="text-xs uppercase text-muted-foreground border-b border-border"><th className="p-3">Rank</th><th className="p-3">Team</th><th className="p-3">Status</th><th className="p-3 text-right">Points</th></tr></thead><tbody>
+        {teamRows.map(row => <tr key={row.id} className="border-b border-border/60 text-white"><td className="p-3">#{row.rank}</td><td className="p-3 font-bold">{row.team_name}</td><td className="p-3 capitalize">{row.status}</td><td className="p-3 text-right font-mono">{row.points.toLocaleString()}</td></tr>)}
+      </tbody></table></div>
+      {teamLoading && <p className="py-6 text-center text-cyan-400">Loading team leaderboard…</p>}
+      {!teamLoading && teamRows.length === 0 && <p className="py-6 text-center text-muted-foreground">No registered teams yet.</p>}
+      {teamTotal > 10 && <div className="mt-4 flex items-center justify-between text-sm"><span className="text-muted-foreground">Page {teamPage + 1} of {maxTeamPage + 1} · {teamTotal} teams</span><div className="flex gap-2"><button disabled={teamPage === 0} onClick={() => setTeamPage(p => p - 1)} className="rounded bg-secondary px-3 py-2 disabled:opacity-40">Previous</button><button disabled={teamPage >= maxTeamPage} onClick={() => setTeamPage(p => p + 1)} className="rounded bg-secondary px-3 py-2 disabled:opacity-40">Next</button></div></div>}
+    </section>}
+    {tab === "Results" && t.team_mode ? <section className="glass border border-border rounded-xl p-5">
+      {bracket.length === 0 ? <p className="py-8 text-center text-muted-foreground">The single-elimination bracket has not been created yet.</p> : <>
+      <div className="flex gap-6 overflow-x-auto pb-4 items-stretch">
+        {bracket.map((round, roundIndex) => <div key={round.id} className="min-w-64 flex-1 flex flex-col justify-around gap-6"><h3 className="text-center text-sm font-black uppercase tracking-widest text-violet-300">{round.name}</h3>{round.matches.map(match => <div key={match.id} className="relative rounded-xl border border-border bg-secondary/70 p-4 text-sm">
+          {roundIndex < bracket.length - 1 && <span aria-hidden="true" className="absolute -right-6 top-1/2 text-2xl text-violet-400">→</span>}
+          {[{id: match.team1_id, name: match.team1_name, score: match.score1}, {id: match.team2_id, name: match.team2_name, score: match.score2}].map((team, i) => <div key={team.id || `empty-${i}`} className={`flex justify-between gap-3 py-2 ${team.id && team.id === match.winner_team_id ? "font-black text-green-300" : "text-white"}`}><span>{team.name || "TBD"}</span><span>{team.id ? team.score : ""}</span></div>)}
+          <div className="mt-2 border-t border-border pt-2 text-xs uppercase text-muted-foreground">{match.is_bye ? "Bye" : match.status}</div>
+        </div>)}</div>)}
       </div>
-
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
-        <div className="grid lg:grid-cols-3 gap-8">
-          {/* Main */}
-          <div className="lg:col-span-2">
-            {/* Tabs */}
-            <div className="flex gap-1 mb-6 border-b border-border pb-0 overflow-x-auto">
-              {tabs.map(tab => (
-                <button key={tab} onClick={() => setActiveTab(tab)}
-                  className={`px-4 py-2.5 text-sm font-bold tracking-wide whitespace-nowrap transition-colors border-b-2 -mb-px ${activeTab === tab ? "border-violet-500 text-violet-400" : "border-transparent text-muted-foreground hover:text-foreground"}`}
-                  style={{ fontFamily: "'Rajdhani', sans-serif" }}>
-                  {tab.toUpperCase()}
-                </button>
-              ))}
-            </div>
-
-            {activeTab === "Overview" && (
-              <div className="space-y-5">
-                <p className="text-muted-foreground leading-relaxed">{t.description}</p>
-                {t.status === "completed" && t.results && (
-                  <div className="glass neon-border rounded-2xl p-6">
-                    <h3 className="text-lg font-black text-white mb-5" style={{ fontFamily: "'Rajdhani', sans-serif" }}>TOURNAMENT RESULTS</h3>
-                    <div className="grid grid-cols-3 gap-4 text-center">
-                      {[{ place: "🥈 2ND", name: t.results.second, pts: "+300" }, { place: "🥇 CHAMPION", name: t.results.first, pts: "+500" }, { place: "🥉 3RD", name: t.results.third, pts: "+200" }].map((r, i) => (
-                        <div key={i} className={`rounded-xl p-4 border ${i === 1 ? "bg-yellow-500/10 border-yellow-500/30 scale-105" : "bg-secondary border-border"}`}>
-                          <p className="text-xs mb-2" style={{ fontFamily: "'Rajdhani', sans-serif", letterSpacing: "0.08em" }}>{r.place}</p>
-                          <p className={`text-lg font-black ${i === 1 ? "text-yellow-400" : "text-white"}`} style={{ fontFamily: "'Rajdhani', sans-serif" }}>{r.name}</p>
-                          <p className="text-xs text-green-400 mt-1 font-mono-data">{r.pts} PTS</p>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {activeTab === "Rules" && (
-              <div className="glass border border-border rounded-xl p-6">
-                <h3 className="text-lg font-black text-white mb-4" style={{ fontFamily: "'Rajdhani', sans-serif" }}>TOURNAMENT RULES</h3>
-                <ul className="space-y-3">
-                  {(t.rules.length ? t.rules : ["Solo mode only", "No hacks or cheats tolerated", "Must have a valid V4YT Player ID", "Admin decision is final", "Players must join the lobby 15 minutes before start time", "Match screenshots are required as proof", "Unsportsmanlike conduct will result in disqualification"]).map((r, i) => (
-                    <li key={i} className="flex items-start gap-3 text-sm text-muted-foreground">
-                      <span className="w-5 h-5 rounded bg-violet-500/20 border border-violet-500/30 flex items-center justify-center text-violet-400 font-bold text-xs shrink-0 mt-0.5">{i + 1}</span>
-                      {r}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            {activeTab === "Schedule" && (
-              <div className="space-y-3">
-                {(t.schedule.length ? t.schedule : [{ round: "Registration Closes", time: "30 min before", type: "Admin" }, { round: "Round 1", time: "8:00 PM", type: "Battle Royale" }, { round: "Round 2", time: "9:00 PM", type: "Battle Royale" }, { round: "Grand Finals", time: "10:00 PM", type: "Championship" }]).map((s, i) => (
-                  <div key={i} className="flex items-center gap-4 glass border border-border rounded-xl p-4">
-                    <div className="w-8 h-8 rounded-full bg-violet-500/20 border border-violet-500/30 flex items-center justify-center text-violet-400 font-bold text-sm shrink-0">{i + 1}</div>
-                    <div className="flex-1">
-                      <p className="text-sm font-bold text-white" style={{ fontFamily: "'Rajdhani', sans-serif" }}>{s.round}</p>
-                      <p className="text-xs text-muted-foreground">{s.type}</p>
-                    </div>
-                    <div className="text-sm font-mono-data text-cyan-400">{s.time}</div>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {activeTab === "Participants" && (
-              <div className="space-y-2">
-                {players.slice(0, 8).map((p, i) => (
-                  <Link key={p.id} to={`/players/${p.id}`} className="flex items-center gap-3 glass border border-border rounded-lg px-4 py-3 hover:border-violet-500/30 transition-colors">
-                    <span className="text-muted-foreground text-xs w-5 font-mono-data">#{i + 1}</span>
-                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-violet-600 to-cyan-500 flex items-center justify-center text-white font-black text-xs">{p.avatar}</div>
-                    <span className="flex-1 text-sm font-bold text-white" style={{ fontFamily: "'Rajdhani', sans-serif" }}>{p.username}</span>
-                    <span className="text-xs text-muted-foreground">Lv. {p.level}</span>
-                    <span className="text-xs text-muted-foreground">{p.points.toLocaleString()} pts</span>
-                  </Link>
-                ))}
-                <p className="text-center text-xs text-muted-foreground pt-2">{t.players} players registered · {t.maxPlayers - t.players} spots remaining</p>
-              </div>
-            )}
-
-            {activeTab === "Results" && t.status === "completed" && t.results && (
-              <div className="space-y-3">
-                {[{ pos: "🥇 Champion", name: t.results.first, pts: "+500 V4YT Points" }, { pos: "🥈 Runner-up", name: t.results.second, pts: "+300 V4YT Points" }, { pos: "🥉 Third Place", name: t.results.third, pts: "+200 V4YT Points" }].map((r, i) => (
-                  <div key={i} className={`flex items-center gap-4 rounded-xl p-4 border ${i === 0 ? "bg-yellow-500/10 border-yellow-500/30" : "glass border-border"}`}>
-                    <span className="text-2xl">{["🥇","🥈","🥉"][i]}</span>
-                    <div>
-                      <p className="text-xs text-muted-foreground" style={{ fontFamily: "'Rajdhani', sans-serif" }}>{r.pos}</p>
-                      <p className="text-lg font-black text-white" style={{ fontFamily: "'Rajdhani', sans-serif" }}>{r.name}</p>
-                    </div>
-                    <div className="ml-auto text-sm font-bold text-green-400">{r.pts}</div>
-                  </div>
-                ))}
-              </div>
-            )}
-            {activeTab === "Results" && t.status !== "completed" && (
-              <div className="text-center py-16 text-muted-foreground">
-                <div className="text-4xl mb-3">⏳</div>
-                <p>Results will be posted after the tournament ends.</p>
-              </div>
-            )}
-          </div>
-
-          {/* Sidebar */}
-          <div className="space-y-4">
-            {/* Stats card */}
-            <div className="glass neon-border rounded-xl p-5">
-              <h3 className="text-sm font-black text-white mb-4" style={{ fontFamily: "'Rajdhani', sans-serif" }}>TOURNAMENT INFO</h3>
-              <div className="space-y-3">
-                {[
-                  { label: "Prize Pool", value: t.prize, highlight: true },
-                  { label: "Participants", value: `${t.players} / ${t.maxPlayers}` },
-                  { label: "Game", value: t.game },
-                  { label: "Date", value: t.date },
-                  { label: "Time", value: t.time },
-                ].map(item => (
-                  <div key={item.label} className="flex justify-between items-center border-b border-border pb-2 last:border-0 last:pb-0">
-                    <span className="text-xs text-muted-foreground">{item.label}</span>
-                    <span className={`text-sm font-bold ${item.highlight ? "text-yellow-400" : "text-foreground"}`}>{item.value}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {t.status === "open" && (
-              <Link to={`/tournaments/${t.id}/register`} className="btn-primary w-full text-center block">REGISTER NOW</Link>
-            )}
-            {t.status === "live" && (
-              <Link to={`/tournaments/${t.id}/live`} className="btn-cyan w-full text-center block">🔴 WATCH LIVE</Link>
-            )}
-
-            <div className="glass border border-border rounded-xl p-5">
-              <h3 className="text-sm font-black text-white mb-3" style={{ fontFamily: "'Rajdhani', sans-serif" }}>POINT REWARDS</h3>
-              <div className="space-y-2">
-                {[["Champion", "+500"], ["Runner-up", "+300"], ["3rd Place", "+200"], ["Participation", "+50"], ["Per Match Win", "+100"]].map(([label, pts]) => (
-                  <div key={label} className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">{label}</span>
-                    <span className="font-mono-data text-green-400 font-bold">{pts} PTS</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <Link to="/tournaments" className="btn-secondary w-full text-center block text-xs">← BACK TO TOURNAMENTS</Link>
-          </div>
-        </div>
+      <div className="mt-6 overflow-x-auto">
+        <h3 className="mb-3 text-lg font-black text-white">MATCH RESULTS</h3>
+        <table className="w-full min-w-[560px] text-left">
+          <thead><tr className="border-b border-border text-xs uppercase tracking-wider text-muted-foreground"><th className="p-3">Round</th><th className="p-3">Team 1</th><th className="p-3">Team 2</th><th className="p-3">Won by</th></tr></thead>
+          <tbody>{bracket.flatMap(round => round.matches.map(match => <tr key={match.id} className="border-b border-border/60 text-sm text-white"><td className="p-3 text-violet-300">{round.name}</td><td className="p-3">{match.team1_name || "TBD"}</td><td className="p-3">{match.team2_name || (match.is_bye ? "Bye" : "TBD")}</td><td className="p-3 font-bold text-green-300">{match.winner_name || "—"}</td></tr>))}</tbody>
+        </table>
       </div>
-    </div>
-  );
+      </>}
+    </section> : tab === "Results" && <div className="space-y-2">{results.map((p: any) => <div key={p.user_id} className="glass border border-border rounded p-3 text-white">#{p.placement} · {p.username} · {p.score} pts</div>)}{!results.length && <p className="text-muted-foreground">Results will be posted after the tournament ends.</p>}</div>}
+    {t.status === "open" && <Link to={`/tournaments/${t.id}/register`} className="btn-primary mt-6 inline-block">REGISTER NOW</Link>}
+  </div>;
 }

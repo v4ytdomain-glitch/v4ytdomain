@@ -8,7 +8,6 @@ const navLinks = [
   { label: "Leaderboard", path: "/leaderboard" },
   { label: "Players", path: "/players" },
   { label: "Hall of Fame", path: "/hall-of-fame" },
-  { label: "Videos", path: "/videos" },
 ];
 
 // Utility to format "2 hours ago"

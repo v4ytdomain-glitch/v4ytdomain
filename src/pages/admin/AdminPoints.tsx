@@ -8,7 +8,6 @@ export default function AdminPoints() {
   // Form State
   const [selectedPlayer, setSelectedPlayer] = useState("");
   const [pointsChange, setPointsChange] = useState("");
-  const [xpChange, setXpChange] = useState("");
   const [reason, setReason] = useState("");
 
   const [submitting, setSubmitting] = useState(false);
@@ -33,7 +32,7 @@ export default function AdminPoints() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedPlayer || !pointsChange || !xpChange) {
+    if (!selectedPlayer || !pointsChange || !reason.trim()) {
       setError("Please fill out all required fields.");
       return;
     }
@@ -44,15 +43,13 @@ export default function AdminPoints() {
 
     try {
       await api.post("/admin/adjust-points", {
-        user_id: parseInt(selectedPlayer),
-        points_change: parseInt(pointsChange),
-        xp_change: parseInt(xpChange),
-        reason: reason || "Manual Admin Adjustment"
+        user_id: selectedPlayer,
+        amount: parseInt(pointsChange),
+        reason
       });
 
       setSuccess("Transaction successful! The player's balance has been updated and they have been notified.");
       setPointsChange("");
-      setXpChange("");
       setReason("");
     } catch (err: any) {
       setError(err.message || "Failed to adjust points.");
@@ -61,7 +58,7 @@ export default function AdminPoints() {
     }
   };
 
-  const isDeduction = parseInt(pointsChange || "0") < 0 || parseInt(xpChange || "0") < 0;
+  const isDeduction = parseInt(pointsChange || "0") < 0;
 
   if (loading) {
     return <div className="text-violet-400 font-bold tracking-widest animate-pulse" style={{ fontFamily: "'Rajdhani', sans-serif" }}>LOADING ECONOMY ENGINE...</div>;
@@ -101,7 +98,7 @@ export default function AdminPoints() {
               </select>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div>
               <div>
                 <label className="block text-xs font-bold text-muted-foreground mb-1.5 tracking-widest" style={{ fontFamily: "'Rajdhani', sans-serif" }}>V4YT POINTS (+ / -)</label>
                 <input 
@@ -111,17 +108,6 @@ export default function AdminPoints() {
                   onChange={e => setPointsChange(e.target.value)} 
                   placeholder="e.g. 500 or -100"
                   className={`w-full bg-secondary border rounded-lg px-4 py-2.5 text-sm text-foreground outline-none focus:border-violet-500 transition-colors ${parseInt(pointsChange) < 0 ? 'border-red-500/50' : parseInt(pointsChange) > 0 ? 'border-green-500/50' : 'border-border'}`} 
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-muted-foreground mb-1.5 tracking-widest" style={{ fontFamily: "'Rajdhani', sans-serif" }}>XP AMOUNT (+ / -)</label>
-                <input 
-                  type="number" 
-                  required 
-                  value={xpChange} 
-                  onChange={e => setXpChange(e.target.value)} 
-                  placeholder="e.g. 1000 or -500"
-                  className={`w-full bg-secondary border rounded-lg px-4 py-2.5 text-sm text-foreground outline-none focus:border-violet-500 transition-colors ${parseInt(xpChange) < 0 ? 'border-red-500/50' : parseInt(xpChange) > 0 ? 'border-green-500/50' : 'border-border'}`} 
                 />
               </div>
             </div>

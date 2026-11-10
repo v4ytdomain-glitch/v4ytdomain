@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { api } from "../../lib/api";
+import TournamentBracketEditor from "./TournamentBracketEditor";
 
 export default function AdminTournaments() {
   const [creating, setCreating] = useState(false);
@@ -7,6 +8,7 @@ export default function AdminTournaments() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const [editingTournament, setEditingTournament] = useState<any>(null);
 
   // Form State
   const [formData, setFormData] = useState({
@@ -49,8 +51,14 @@ export default function AdminTournaments() {
     try {
       // Ensure max_players is an integer before sending
       const payload = {
-        ...formData,
-        max_players: parseInt(formData.max_players.toString(), 10) || 100
+        name: formData.name,
+        game: formData.game,
+        start_at: new Date(`${formData.date}T${formData.time || "20:00"}`).toISOString(),
+        capacity: parseInt(formData.max_players.toString(), 10) || 100,
+        prize: formData.prize,
+        status: formData.status,
+        image: formData.image,
+        description: formData.description
       };
 
       const newTournament = await api.post("/admin/tournaments", payload);
@@ -141,6 +149,8 @@ export default function AdminTournaments() {
         </div>
       )}
 
+      {editingTournament && <TournamentBracketEditor tournament={editingTournament} onClose={() => setEditingTournament(null)} />}
+
       {/* TOURNAMENT LIST */}
       <div className="space-y-3">
         {loading ? (
@@ -157,10 +167,10 @@ export default function AdminTournaments() {
               <div className={`w-2.5 h-2.5 rounded-full shrink-0 ${t.status === "live" ? "bg-red-500 pulse-dot" : t.status === "open" ? "bg-green-500" : t.status === "soon" ? "bg-cyan-500" : "bg-muted-foreground"}`}></div>
               <div className="flex-1 min-w-0">
                 <h4 className="text-sm font-bold text-white truncate" style={{ fontFamily: "'Rajdhani', sans-serif" }}>{t.name}</h4>
-                <p className="text-xs text-muted-foreground truncate">{t.game} · {t.date} · {t.players_registered}/{t.max_players} players</p>
+                <p className="text-xs text-muted-foreground truncate">{t.game} · {t.date} · {t.players}/{t.maxPlayers} players</p>
               </div>
               <div className="flex gap-2">
-                <button className="text-xs px-3 py-1.5 rounded bg-secondary border border-border text-muted-foreground hover:text-foreground transition-colors">Edit</button>
+                <button onClick={() => { setEditingTournament(t); setError(""); }} className="text-xs px-3 py-1.5 rounded bg-secondary border border-border text-muted-foreground hover:text-foreground transition-colors">Edit</button>
                 <button className="text-xs px-3 py-1.5 rounded bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/20 transition-colors">Delete</button>
               </div>
             </div>

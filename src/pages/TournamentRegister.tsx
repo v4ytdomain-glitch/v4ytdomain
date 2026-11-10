@@ -10,6 +10,7 @@ export default function TournamentRegister() {
   
   const [tournament, setTournament] = useState<any>(null);
   const [me, setMe] = useState<any>(null);
+  const [teams, setTeams] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [step, setStep] = useState(0);
   const [done, setDone] = useState(false);
@@ -29,13 +30,12 @@ export default function TournamentRegister() {
     // Fetch user data AND the specific tournament data simultaneously
     Promise.all([
       api.get("/auth/me"),
-      api.get("/tournaments/")
+      api.get(`/tournaments/${id}`),
+      api.get("/teams/")
     ])
-      .then(([userData, tournamentsData]) => {
+      .then(([userData, targetTournament, teamData]) => {
         setMe(userData);
-        
-        // Find the specific tournament from the list
-        const targetTournament = tournamentsData.find((t: any) => t.id === Number(id));
+        setTeams(teamData);
         if (!targetTournament) {
           setError("Tournament not found.");
         } else {
@@ -64,13 +64,13 @@ export default function TournamentRegister() {
     setError("");
     
     try {
+      const chosenTeam = teams.find(team => team.name.toLowerCase() === form.teamName.trim().toLowerCase());
+      if (tournament.team_mode && !chosenTeam) throw new Error("Choose a team that you belong to before registering.");
       // THE REAL API CALL
       await api.post(`/tournaments/${id}/register`, {
-        player_id: form.playerId,
+        team_id: chosenTeam?.id || null,
         game_uid: form.gameUid,
-        in_game_name: form.inGameName,
-        team_name: form.teamName,
-        team_members: form.teamMembers
+        in_game_name: form.inGameName
       });
       
       setDone(true);
